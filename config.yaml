@@ -1,0 +1,27 @@
+logging:
+  level: DEBUG
+
+flight:
+  loop_hz: 20
+  scan_alt: 30.0
+  drop_alt: 10.0
+
+align:
+  dx_threshold: 10.0
+  dy_threshold: 10.0
+  kx: 0.001
+  ky: 0.001
+
+gimbal:
+  pitch_scan: -35.0
+  yaw_scan: 0.0
+
+rc_switch:
+  mode_channel: 5
+  drop_channel: 6
+
+dropper:
+  channel: 15
+  pwm_safe: 1100
+  pwm_drop: 1900
+  pulse_ms: 500
