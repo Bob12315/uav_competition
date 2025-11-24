@@ -3,6 +3,9 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from logging import Logger
+from math import sin
+
+from app.core.models import ControlCommand, TelemetrySnapshot
 
 
 @dataclass
@@ -81,3 +84,43 @@ class FcClient:
     def send_servo(self, channel: int, pwm: int) -> None:
         self.log.debug("send_servo ch=%d pwm=%d", channel, pwm)
         # TODO: MAV_CMD_DO_SET_SERVO
+
+
+class FakeFcClient:
+    """
+    纯软件 Demo 用的假 FC：
+    - read_telemetry() 生成随时间变化的高度、电压、yaw
+    - send_control() 只打印 yaw_rate / drop 行为
+    """
+
+    def __init__(self, logger: Logger) -> None:
+        self.log = logger.getChild("FakeFc")
+        self._start_time = time.time()
+
+    def read_telemetry(self) -> TelemetrySnapshot:
+        now = time.time() - self._start_time
+        alt = 15.0 + 10.0 * sin(now * 0.2)
+        voltage = 16.8 - 0.01 * now
+        return TelemetrySnapshot(
+            time=time.time(),
+            mode="GUIDED",
+            armed=True,
+            voltage=max(voltage, 13.0),
+            alt=alt,
+            vx=0.0,
+            vy=0.0,
+            yaw=(now * 10.0) % 360,
+            lat=0.0,
+            lon=0.0,
+            sats=10,
+        )
+
+    def send_control(self, cmd: ControlCommand) -> None:
+        if abs(cmd.yaw_rate) > 1e-3 or cmd.drop:
+            self.log.debug(
+                "control: yaw_rate=%.3f vx=%.2f vy=%.2f drop=%s",
+                cmd.yaw_rate,
+                cmd.vx,
+                cmd.vy,
+                cmd.drop,
+            )
