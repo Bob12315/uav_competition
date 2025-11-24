@@ -11,7 +11,19 @@ def main():
     cfg = load_config()
     logger = setup_logging(cfg)
 
-    vision = VisionSystem(0, logger)
+    vision_cfg = cfg.vision
+    device = int(vision_cfg.device) if str(vision_cfg.device).isdigit() else vision_cfg.device
+    vision = VisionSystem(
+        device=device,
+        logger=logger,
+        width=vision_cfg.width,
+        height=vision_cfg.height,
+        pixel_format=vision_cfg.pixel_format,
+        aruco_dict=vision_cfg.aruco_dict,
+        marker_length_m=vision_cfg.marker_length_m,
+        camera_matrix=vision_cfg.camera_matrix,
+        dist_coeffs=vision_cfg.dist_coeffs,
+    )
 
     while True:
         vr, frame = vision.read()

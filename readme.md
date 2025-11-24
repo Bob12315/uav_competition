@@ -198,6 +198,24 @@ class VisionSystem:
         """
 ```
 
+#### 视觉配置 & 使用说明（ArUco）
+
+`config.yaml` → `vision` 字段：
+
+- `device`: 摄像头索引或路径，例 `0` 或 `"/dev/video2"`；数字字符串在 `main.py` 中会被转成 int 传给 OpenCV。  
+- `width` / `height`: 捕获分辨率，需设备支持；分辨率变化会影响内参与尺度。  
+- `pixel_format`: 优先试 `MJPG`，不行再用 `YUYV`（会自动尝试 V4L2 / 默认 / GStreamer）。  
+- `calibration_file`: OpenCV 标定文件路径（支持 `ost.yaml` 格式）；若提供且未手填矩阵，会自动加载到 `camera_matrix` / `dist_coeffs`。  
+- `camera_matrix` / `dist_coeffs`: 可直接在 YAML 填入矩阵/畸变系数，优先级高于 `calibration_file`。示例矩阵格式：`[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]`；畸变示例 `[k1, k2, p1, p2, k3]`。  
+- `aruco_dict`: 预置字典名，例 `DICT_4X4_50`。  
+- `marker_length_m`: ArUco 标签实物边长（米），用于求姿态与坐标轴长度，必须与打印尺寸一致。
+
+运行核对：
+
+- `python3 sims/sim_vision.py` 或 `python3 main.py`，对准 ArUco 标签；HUD 会显示 `dx/dy` 以及 `Tvec/Rvec` 数值，并在画面上绘制坐标轴。  
+- 如果显示缺失姿态：确认 OpenCV 带有 `aruco` 模块；未加载标定时会用默认内参，尺度和角度可能漂移。  
+- 打不开摄像头时，可用 `v4l2-ctl --device=/dev/videoX --list-formats-ext` 查看支持的分辨率/格式，或检查用户是否在 `video` 组。
+
 以后你从“颜色检测”换成“YOLO 模型”，不需要动 Mission / HUD，只要保持 `VisionResult` 不变即可。
 
 ---
@@ -374,6 +392,13 @@ pip install opencv-python numpy
    * 在 `VisionSystem` 里打开 `/dev/videoX`；
    * 先用简单的颜色检测 / 形状检测验证 dx/dy；
    * 确认 HUD 中目标位置和实际画面一致。
+   * 配置摄像头：`config.yaml` → `vision`
+     * `device`: 节点或索引，例：`"/dev/video2"` 或 `0`
+     * `width` / `height`: 例：`640` / `480`（与设备支持的分辨率匹配）
+     * `pixel_format`: 先试 `MJPG`，不行再改为 `YUYV`
+   * 打不开时快速排查：
+     * `v4l2-ctl --device=/dev/videoX --list-formats-ext` 查看支持的分辨率/格式
+     * 确认当前用户在 `video` 组（`groups`），否则 `sudo usermod -aG video $USER` 后重新登录
 
 5. **调试任务状态机：**
 
@@ -410,3 +435,49 @@ pip install opencv-python numpy
 * 本项目主要用于个人比赛 / 学习 / 实验；
 * 你可以根据自己的实际飞控、传感器、云台设计，修改任何模块；
 * 建议在任何自动控制逻辑启用前，**确保有可靠的手动 / 急停机制**（遥控优先、飞控模式切换等）。
+
+---
+
+## 7. OrangePi（Ubuntu 22.04）快速部署
+
+OrangePi 的官方源通常较慢，建议先换成就近镜像，再安装 Python 环境与视频相关依赖。
+
+1) 换源（示例使用清华 TUNA，按需换成你附近的镜像站；执行前备份原源）：  
+
+```bash
+sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%Y%m%d-%H%M%S)
+sudo tee /etc/apt/sources.list >/dev/null <<'EOF'
+deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy main restricted universe multiverse
+deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy-updates main restricted universe multiverse
+deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy-security main restricted universe multiverse
+deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy-backports main restricted universe multiverse
+EOF
+sudo apt update
+```
+
+2) 安装基础依赖（Python/视频工具/编译工具）：  
+
+```bash
+sudo apt install -y python3 python3-pip python3-venv python3-opencv v4l-utils ffmpeg git build-essential
+python3 -m pip install --upgrade pip
+```
+
+> 如需使用 pip 版本的 OpenCV，请在虚拟环境中运行 `pip install opencv-python numpy`；如果已装 `python3-opencv` 可跳过。
+
+3) （可选）创建虚拟环境并安装本项目依赖：  
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install opencv-python numpy
+```
+
+4) 摄像头权限检查：确保当前用户在 `video` 组（`groups`）；若不在，执行 `sudo usermod -aG video $USER` 后重新登录。
+
+5) 运行 Demo 验证：  
+
+```bash
+python main.py
+```
+
+如果网络环境变化需要恢复官方源，使用备份文件还原 `/etc/apt/sources.list`，再执行 `sudo apt update`。

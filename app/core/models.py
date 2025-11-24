@@ -24,6 +24,8 @@ class VisionResult:
     dx: float = 0.0
     dy: float = 0.0
     confidence: float = 0.0
+    tvec: tuple[float, float, float] | None = None  # meters, camera coords (x right, y down, z forward)
+    rvec: tuple[float, float, float] | None = None  # Rodrigues rotation vector (rad)
 
 
 @dataclass

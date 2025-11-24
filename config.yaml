@@ -11,10 +11,28 @@ align:
   dy_threshold: 10.0
   kx: 0.001
   ky: 0.001
+  # 以相机坐标系的平移向量对齐（米），用于 ArUco 姿态输出
+  x_threshold_m: 0.05
+  y_threshold_m: 0.05
+  kx_pos: 0.5
+  ky_pos: 0.5
 
 gimbal:
   pitch_scan: -35.0
   yaw_scan: 0.0
+
+vision:
+  # 摄像头索引或路径：比如 0 表示 /dev/video0，2 表示 /dev/video2，或直接写 "/dev/video3"
+  device: "/dev/video2"
+  width: 640
+  height: 480
+  pixel_format: YUYV
+  calibration_file: calibration/ost.yaml
+  # ArUco 配置：需要根据实物标签尺寸与标定矩阵调整
+  aruco_dict: DICT_4X4_50
+  marker_length_m: 0.05
+  # camera_matrix: [[fx, 0, cx], [0, fy, cy], [0, 0, 1]]
+  # dist_coeffs: [k1, k2, p1, p2, k3]
 
 rc_switch:
   mode_channel: 5
