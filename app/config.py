@@ -69,6 +69,13 @@ class DropperConfig:
 
 
 @dataclass
+class HudConfig:
+    display: bool = True
+    use_fbdev: bool = False
+    fbdev_path: str = "/dev/fb0"
+
+
+@dataclass
 class AppConfig:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     flight: FlightConfig = field(default_factory=FlightConfig)
@@ -77,6 +84,7 @@ class AppConfig:
     vision: VisionConfig = field(default_factory=VisionConfig)
     rc_switch: RcSwitchConfig = field(default_factory=RcSwitchConfig)
     dropper: DropperConfig = field(default_factory=DropperConfig)
+    hud: HudConfig = field(default_factory=HudConfig)
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -136,6 +144,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     vision_cfg = data.get("vision", {}) or {}
     rc_cfg = data.get("rc_switch", {}) or {}
     drop_cfg = data.get("dropper", {}) or {}
+    hud_cfg = data.get("hud", {}) or {}
 
     calibration_file = vision_cfg.get("calibration_file")
     camera_matrix = vision_cfg.get("camera_matrix")
@@ -166,5 +175,10 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         ),
         rc_switch=RcSwitchConfig(**rc_cfg),
         dropper=DropperConfig(**drop_cfg),
+        hud=HudConfig(
+            display=bool(hud_cfg.get("display", True)),
+            use_fbdev=bool(hud_cfg.get("use_fbdev", False)),
+            fbdev_path=str(hud_cfg.get("fbdev_path", "/dev/fb0")),
+        ),
     )
     return cfg

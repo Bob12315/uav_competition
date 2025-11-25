@@ -358,6 +358,15 @@ pip install opencv-python numpy
    * 左上角显示状态：SEARCH / ALIGN / READY_TO_DROP / DROP / EXIT 等；
    * 按 `ESC` 退出。
 
+### 无桌面（Orange Pi HDMI 直出）
+
+- 在 `config.yaml` 里设置：
+  - `hud.display: false`（禁用窗口）
+  - `hud.use_fbdev: true`
+  - `hud.fbdev_path: "/dev/fb0"`（默认即可）
+- 直接运行 `python main.py`，画面会通过 GStreamer `fbdevsink` 写到 `/dev/fb0`，可用 HDMI/AV 输出观看。
+- 开启 `use_fbdev` 时窗口显示会被自动关闭，不支持同时窗口+fbdev 双输出。
+
 ---
 
 ## 4. 从 Demo 过渡到真实无人机
@@ -445,13 +454,20 @@ OrangePi 的官方源通常较慢，建议先换成就近镜像，再安装 Pyth
 1) 换源（示例使用清华 TUNA，按需换成你附近的镜像站；执行前备份原源）：  
 
 ```bash
-sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%Y%m%d-%H%M%S)
-sudo tee /etc/apt/sources.list >/dev/null <<'EOF'
-deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy main restricted universe multiverse
-deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy-updates main restricted universe multiverse
-deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy-security main restricted universe multiverse
-deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy-backports main restricted universe multiverse
+sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak2
+
+sudo tee /etc/apt/sources.list <<EOF
+deb http://mirrors.aliyun.com/ubuntu-ports/ jammy main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu-ports/ jammy-updates main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu-ports/ jammy-backports main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu-ports/ jammy-security main restricted universe multiverse
+
+deb-src http://mirrors.aliyun.com/ubuntu-ports/ jammy main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu-ports/ jammy-updates main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu-ports/ jammy-backports main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu-ports/ jammy-security main restricted universe multiverse
 EOF
+
 sudo apt update
 ```
 
@@ -459,7 +475,21 @@ sudo apt update
 
 ```bash
 sudo apt install -y python3 python3-pip python3-venv python3-opencv v4l-utils ffmpeg git build-essential
+python3 -m pip config set global.index-url https://mirrors.aliyun.com/pypi/simple
 python3 -m pip install --upgrade pip
+
+sudo apt update
+
+sudo apt install \
+  gstreamer1.0-tools \
+  gstreamer1.0-libav \
+  gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-bad \
+  gstreamer1.0-plugins-ugly \
+  v4l-utils
+
+sudo apt install -y xserver-xorg xinit openbox xterm
 ```
 
 > 如需使用 pip 版本的 OpenCV，请在虚拟环境中运行 `pip install opencv-python numpy`；如果已装 `python3-opencv` 可跳过。
@@ -473,6 +503,11 @@ pip install opencv-python numpy
 ```
 
 4) 摄像头权限检查：确保当前用户在 `video` 组（`groups`）；若不在，执行 `sudo usermod -aG video $USER` 后重新登录。
+
+ls -l /dev/video*
+v4l2-ctl --list-devices
+ffplay /dev/video0
+
 
 5) 运行 Demo 验证：  
 

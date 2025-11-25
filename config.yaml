@@ -23,7 +23,7 @@ gimbal:
 
 vision:
   # 摄像头索引或路径：比如 0 表示 /dev/video0，2 表示 /dev/video2，或直接写 "/dev/video3"
-  device: "/dev/video2"
+  device: "/dev/video1"
   width: 640
   height: 480
   pixel_format: YUYV
@@ -43,3 +43,8 @@ dropper:
   pwm_safe: 1100
   pwm_drop: 1900
   pulse_ms: 500
+
+hud:
+  display: True
+  use_fbdev: false
+  fbdev_path: "/dev/fb0"
