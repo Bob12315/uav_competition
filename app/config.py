@@ -43,10 +43,11 @@ class GimbalConfig:
 
 @dataclass
 class VisionConfig:
-    device: str = "0"  # 可填摄像头索引（字符串或路径）
+    device: str = "0"  # 摄像头索引或路径
     width: int = 640
     height: int = 480
     pixel_format: str = "MJPG"  # 或 YUYV
+    fps: int = 30
     calibration_file: str | None = None
     aruco_dict: str = "DICT_4X4_50"
     marker_length_m: float = 0.05
@@ -69,13 +70,6 @@ class DropperConfig:
 
 
 @dataclass
-class HudConfig:
-    display: bool = True
-    use_fbdev: bool = False
-    fbdev_path: str = "/dev/fb0"
-
-
-@dataclass
 class AppConfig:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     flight: FlightConfig = field(default_factory=FlightConfig)
@@ -84,7 +78,6 @@ class AppConfig:
     vision: VisionConfig = field(default_factory=VisionConfig)
     rc_switch: RcSwitchConfig = field(default_factory=RcSwitchConfig)
     dropper: DropperConfig = field(default_factory=DropperConfig)
-    hud: HudConfig = field(default_factory=HudConfig)
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -95,10 +88,6 @@ def _load_yaml(path: Path) -> Dict[str, Any]:
 
 
 def _load_calibration_from_file(path: str | None) -> tuple[list[list[float]] | None, list[float] | None]:
-    """
-    Load camera_matrix and dist_coeffs from an OpenCV-style YAML (e.g., ost.yaml).
-    Returns (camera_matrix, dist_coeffs) or (None, None) on failure.
-    """
     if not path:
         return None, None
 
@@ -144,7 +133,6 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     vision_cfg = data.get("vision", {}) or {}
     rc_cfg = data.get("rc_switch", {}) or {}
     drop_cfg = data.get("dropper", {}) or {}
-    hud_cfg = data.get("hud", {}) or {}
 
     calibration_file = vision_cfg.get("calibration_file")
     camera_matrix = vision_cfg.get("camera_matrix")
@@ -167,6 +155,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
             width=int(vision_cfg.get("width", 640)),
             height=int(vision_cfg.get("height", 480)),
             pixel_format=str(vision_cfg.get("pixel_format", "MJPG")),
+            fps=int(vision_cfg.get("fps", 30)),
             calibration_file=str(calibration_file) if calibration_file else None,
             aruco_dict=str(vision_cfg.get("aruco_dict", "DICT_4X4_50")),
             marker_length_m=float(vision_cfg.get("marker_length_m", 0.05)),
@@ -175,10 +164,5 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         ),
         rc_switch=RcSwitchConfig(**rc_cfg),
         dropper=DropperConfig(**drop_cfg),
-        hud=HudConfig(
-            display=bool(hud_cfg.get("display", True)),
-            use_fbdev=bool(hud_cfg.get("use_fbdev", False)),
-            fbdev_path=str(hud_cfg.get("fbdev_path", "/dev/fb0")),
-        ),
     )
     return cfg

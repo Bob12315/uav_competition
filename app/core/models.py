@@ -37,10 +37,3 @@ class ControlCommand:
     gimbal_pitch: float | None = None
     gimbal_yaw: float | None = None
     drop: bool = False
-
-
-@dataclass
-class HudData:
-    telemetry: TelemetrySnapshot
-    vision: VisionResult
-    mission_state: str = "IDLE"

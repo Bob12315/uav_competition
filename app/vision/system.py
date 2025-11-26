@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from logging import Logger
 
@@ -11,10 +12,8 @@ from app.core.models import VisionResult
 
 class VisionSystem:
     """
-    真机版本入口：
-    - 打开指定摄像头
-    - 可选设置分辨率、像素格式（默认 MJPG 640x480）
-    - ArUco 检测：返回 dx/dy，图像上绘制标签与坐标轴
+    摄像头读取 + ArUco 检测（管道方式与 vision_adapter.py 保持一致）。
+    优先使用 GStreamer v4l2src + appsink，失败再回退 V4L2/default。
     """
 
     def __init__(
@@ -24,10 +23,12 @@ class VisionSystem:
         width: int | None = None,
         height: int | None = None,
         pixel_format: str | None = None,
+        fps: int | None = None,
         aruco_dict: str | None = None,
         marker_length_m: float = 0.05,
         camera_matrix: list[list[float]] | None = None,
         dist_coeffs: list[float] | None = None,
+        prefer_gst_input: bool | None = None,
     ) -> None:
         self.log = logger.getChild("Vision")
         self.cap: cv2.VideoCapture | None = None
@@ -35,7 +36,13 @@ class VisionSystem:
         self.width = width
         self.height = height
         self.pixel_format = (pixel_format or "MJPG").upper()
+        self.fps = int(fps) if fps else 30
         self.marker_length_m = float(marker_length_m)
+        env_prefer_gst = os.environ.get("USE_GST_INPUT")
+        if prefer_gst_input is not None:
+            self.prefer_gst_input = prefer_gst_input
+        else:
+            self.prefer_gst_input = env_prefer_gst == "1"
 
         self._camera_matrix = (
             np.array(camera_matrix, dtype=np.float32) if camera_matrix is not None else None
@@ -51,7 +58,6 @@ class VisionSystem:
         self._aruco_detector = None
         self._init_aruco(aruco_dict or "DICT_4X4_50")
 
-        # 尝试一系列后端，尽快拿到可读的 cap
         self._opened = self._init_capture()
 
     def read(self) -> tuple[VisionResult, "cv2.Mat | None"]:
@@ -77,40 +83,47 @@ class VisionSystem:
 
     @staticmethod
     def _build_gst_pipeline(
-        device: str, width: int | None, height: int | None, fmt: str = "MJPG"
+        device: str, width: int | None, height: int | None, fmt: str, fps: int
     ) -> str:
         w = width or 640
         h = height or 480
         fmt_upper = fmt.upper()
         if fmt_upper == "YUYV":
-            caps = f"video/x-raw, format=YUY2, width={w}, height={h}, framerate=30/1"
-            decode = "videoconvert"
+            caps = f"video/x-raw,format=YUY2,width={w},height={h},framerate={fps}/1"
+            decode = "videoconvert ! video/x-raw,format=BGR"
         else:
-            caps = f"image/jpeg, width={w}, height={h}, framerate=30/1"
-            decode = "jpegdec ! videoconvert"
-        return f"v4l2src device={device} ! {caps} ! {decode} ! appsink"
+            caps = f"image/jpeg,width={w},height={h},framerate={fps}/1"
+            decode = "jpegdec ! videoconvert ! video/x-raw,format=BGR"
+        return (
+            f"v4l2src device={device} io-mode=2 ! {caps} ! "
+            "queue max-size-buffers=2 leaky=downstream ! "
+            f"{decode} ! appsink drop=true max-buffers=2"
+        )
 
     def _init_capture(self) -> bool:
         dev = self.device
         w, h, fmt = self.width, self.height, self.pixel_format
         attempts: list[tuple[str, cv2.VideoCapture]] = []
 
-        # 1) V4L2
-        attempts.append(("V4L2", cv2.VideoCapture(dev, cv2.CAP_V4L2)))
-        # 2) 默认 backend
-        attempts.append(("DEFAULT", cv2.VideoCapture(dev)))
-        # 3) GStreamer 管道（仅对 /dev/videoX）
-        if isinstance(dev, str) and dev.startswith("/dev/video"):
-            pipeline = self._build_gst_pipeline(dev, w, h, fmt)
-            attempts.append((f"GSTREAMER-{fmt}", cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)))
-            # 额外尝试 YUYV 管道
-            if fmt != "YUYV":
-                pipeline_yuyv = self._build_gst_pipeline(dev, w, h, "YUYV")
-                attempts.append(("GSTREAMER-YUYV", cv2.VideoCapture(pipeline_yuyv, cv2.CAP_GSTREAMER)))
+        def gst_attempts() -> list[tuple[str, cv2.VideoCapture]]:
+            out: list[tuple[str, cv2.VideoCapture]] = []
+            if isinstance(dev, str) and dev.startswith('/dev/video'):
+                pipeline = self._build_gst_pipeline(dev, w, h, fmt, self.fps)
+                out.append((f"GSTREAMER-{fmt}", cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)))
+                if fmt != 'YUYV':
+                    pipeline_yuyv = self._build_gst_pipeline(dev, w, h, 'YUYV', self.fps)
+                    out.append((f"GSTREAMER-YUYV", cv2.VideoCapture(pipeline_yuyv, cv2.CAP_GSTREAMER)))
+            return out
+
+        gst_first = bool(getattr(self, 'prefer_gst_input', False))
+        if gst_first:
+            attempts.extend(gst_attempts())
+        attempts.append(('V4L2', cv2.VideoCapture(dev, cv2.CAP_V4L2)))
+        attempts.append(('DEFAULT', cv2.VideoCapture(dev)))
 
         for name, cap in attempts:
             if not cap.isOpened():
-                self.log.debug("Open attempt %s failed for %s", name, dev)
+                self.log.debug('Open attempt %s failed for %s', name, dev)
                 cap.release()
                 continue
 
@@ -121,17 +134,18 @@ class VisionSystem:
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
             if h:
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+            cap.set(cv2.CAP_PROP_FPS, self.fps)
 
             ok, frame = cap.read()
             if ok and frame is not None:
                 self.cap = cap
-                self.log.info("Camera %s opened via %s (%dx%d %s)", dev, name, frame.shape[1], frame.shape[0], fmt)
+                self.log.info('Camera %s opened via %s (%dx%d %s)', dev, name, frame.shape[1], frame.shape[0], fmt)
                 return True
 
-            self.log.debug("Open attempt %s gave no frame, releasing", name)
+            self.log.debug('Open attempt %s gave no frame, releasing', name)
             cap.release()
 
-        self.log.error("Failed to open camera %s after all attempts", dev)
+        self.log.error('Failed to open camera %s after all attempts', dev)
         return False
 
     def _init_aruco(self, dict_name: str) -> None:
@@ -158,7 +172,6 @@ class VisionSystem:
 
     def _ensure_camera_matrix(self, width: int, height: int) -> bool:
         if self._camera_matrix is None:
-            # 粗略假设 fx, fy 接近分辨率，保证能画出坐标轴；用户可在 config.yaml 中提供精确标定
             fx = fy = 0.9 * float(max(width, height))
             cx = width / 2.0
             cy = height / 2.0
@@ -203,26 +216,23 @@ class VisionSystem:
         if pose is not None:
             rvec, tvec, distance = pose
             vr.confidence = max(0.0, min(1.0, 1.0 / (1.0 + distance)))
-            vr.tvec = (float(tvec[0][0]), float(tvec[1][0]), float(tvec[2][0]))
-            vr.rvec = (float(rvec[0][0]), float(rvec[1][0]), float(rvec[2][0]))
+            flat_tvec = np.asarray(tvec).reshape(-1)
+            flat_rvec = np.asarray(rvec).reshape(-1)
+            if flat_tvec.size >= 3 and flat_rvec.size >= 3:
+                vr.tvec = (float(flat_tvec[0]), float(flat_tvec[1]), float(flat_tvec[2]))
+                vr.rvec = (float(flat_rvec[0]), float(flat_rvec[1]), float(flat_rvec[2]))
+            else:
+                self.log.debug("Pose vectors returned with unexpected shape: rvec=%s tvec=%s", rvec, tvec)
 
         return vr
 
     def _estimate_pose(
         self, frame: "cv2.Mat", corners, width: int, height: int
     ) -> tuple[np.ndarray, np.ndarray, float] | None:
-        """
-        Estimate pose of the first detected marker.
-        Uses cv2.aruco.estimatePoseSingleMarkers when available,
-        otherwise falls back to solvePnP.
-        """
         if not self._ensure_camera_matrix(width, height):
             return None
 
-        try:
-            estimator = getattr(cv2.aruco, "estimatePoseSingleMarkers", None)
-        except AttributeError:
-            estimator = None
+        estimator = getattr(cv2.aruco, "estimatePoseSingleMarkers", None)
 
         if estimator is not None:
             rvecs, tvecs, _ = estimator(corners, self.marker_length_m, self._camera_matrix, self._dist_coeffs)
@@ -231,15 +241,14 @@ class VisionSystem:
             rvec = rvecs[0]
             tvec = tvecs[0]
         else:
-            # Fallback: manual solvePnP for the first marker
             pts_img = corners[0].reshape(-1, 2).astype(np.float32)
             half = self.marker_length_m / 2.0
             pts_obj = np.array(
                 [
-                    [-half, half, 0.0],   # top-left
-                    [half, half, 0.0],    # top-right
-                    [half, -half, 0.0],   # bottom-right
-                    [-half, -half, 0.0],  # bottom-left
+                    [-half, half, 0.0],
+                    [half, half, 0.0],
+                    [half, -half, 0.0],
+                    [-half, -half, 0.0],
                 ],
                 dtype=np.float32,
             )

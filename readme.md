@@ -1,4 +1,4 @@
-````markdown
+﻿````markdown
 # UAV Competition Framework – Quadrotor Recon & Bombing
 
 四旋翼无人机 **侦察 + 投弹比赛** 的 Python 程序框架。
@@ -9,7 +9,7 @@
 - **易调试**：每个模块都有自己的“小模拟程序”可以单独跑  
 - **易扩展**：以后想换目标检测算法 / 飞控 / 控制策略，只改对应模块
 
-当前仓库内可以先用一个 **假飞控 + 假视觉 + 状态机 + HUD** 的 Demo 在电脑上跑起来，后续再逐步替换成真实 MAVLink 和真实相机。
+当前仓库内可以先用一个 **假飞控 + 假视觉 + 状态机** 的 Demo 在电脑上跑起来（HUD 已移除，后续重写），再逐步替换成真实 MAVLink 和真实相机。  
 
 ---
 
@@ -30,7 +30,7 @@ uav_competition/
 │  ├─ core/                # 公共数据结构 & 上下文
 │  │  ├─ __init__.py
 │  │  ├─ app_context.py    # AppContext(config + logger)
-│  │  └─ models.py         # TelemetrySnapshot / VisionResult / ControlCommand / HudData
+│  │  └─ models.py         # TelemetrySnapshot / VisionResult / ControlCommand
 │  ├─ io/                  # 全部通过 MAVLink 与飞控交互
 │  │  ├─ __init__.py
 │  │  ├─ fc_client.py      # FcClient：MAVLink 封装（连接/心跳/发命令/读消息）
@@ -45,16 +45,12 @@ uav_competition/
 │  │  ├─ __init__.py
 │  │  ├─ align_controller.py   # AlignController：dx/dy → yaw / gimbal / vx,vy
 │  │  └─ mission_manager.py    # MissionManager：SEARCH / ALIGN / DROP 等状态机
-│  ├─ hud/                 # OSD / HUD 渲染
-│  │  ├─ __init__.py
-│  │  └─ renderer.py       # HudRenderer：叠加电压、高度、状态、目标框
 │  └─ telemetry/           # 本地日志 / 远程传输
 │     ├─ __init__.py
 │     └─ logger.py         # TelemetryLogger：写 CSV / 记录关键数据
 └─ sims/                   # 各黑盒的独立模拟程序
    ├─ sim_vision.py        # 只跑视觉模块：离线视频 / 图片测试识别 & dx/dy
-   ├─ sim_mission.py       # 只跑任务状态机：假 Telemetry + 假 VisionResult 看状态切换
-   └─ sim_hud.py           # 只跑 HUD：用静态图片看 OSD 布局
+   └─ sim_mission.py       # 只跑任务状态机：假 Telemetry + 假 VisionResult 看状态切换
 ````
 
 > 目前你已经有一个单文件版 `main.py` Demo，可以先用它跑起来，之后按上面的结构拆文件。
@@ -109,12 +105,6 @@ uav_competition/
       gimbal_pitch: float | None
       gimbal_yaw: float | None
       drop: bool
-
-  @dataclass
-  class HudData:
-      telemetry: TelemetrySnapshot
-      vision: VisionResult
-      mission_state: str
   ```
 
 * 用 `AppConfig` 管理配置（从 `config.yaml` 读取）；
@@ -194,7 +184,7 @@ uav_competition/
 class VisionSystem:
     def read(self) -> tuple[VisionResult, frame]:
         """
-        返回本帧的识别结果 + 原始图像（给 HUD 叠加）。
+        ????????? + ?????????
         """
 ```
 
@@ -212,11 +202,11 @@ class VisionSystem:
 
 运行核对：
 
-- `python3 sims/sim_vision.py` 或 `python3 main.py`，对准 ArUco 标签；HUD 会显示 `dx/dy` 以及 `Tvec/Rvec` 数值，并在画面上绘制坐标轴。  
+- `python3 sims/sim_vision.py` ? `python3 main.py`??? ArUco ???`sims/sim_vision.py` ??????? `dx/dy` ? `Tvec/Rvec`?`main.py` ??? headless?? HUD ????
 - 如果显示缺失姿态：确认 OpenCV 带有 `aruco` 模块；未加载标定时会用默认内参，尺度和角度可能漂移。  
 - 打不开摄像头时，可用 `v4l2-ctl --device=/dev/videoX --list-formats-ext` 查看支持的分辨率/格式，或检查用户是否在 `video` 组。
 
-以后你从“颜色检测”换成“YOLO 模型”，不需要动 Mission / HUD，只要保持 `VisionResult` 不变即可。
+以后你从“颜色检测”换成“YOLO 模型”，不需要动 Mission，只要保持 `VisionResult` 不变即可。
 
 ---
 
@@ -259,34 +249,11 @@ class VisionSystem:
 
 ---
 
-### 2.5 HUD / OSD 黑盒
+### 2.5 HUD / OSD
 
-**文件：**
-
-* `app/hud/renderer.py`
-
-**职责：**
-
-* 在视频画面上叠加：
-
-  * 电压 / 高度 / 卫星数；
-  * 当前飞控模式（GUIDED / LOITER …）；
-  * 当前任务状态（SEARCH / ALIGN / DROP / EXIT …）；
-  * 目标状态（有无、dx/dy、置信度）；
-  * 中心十字线 / 目标框。
-
-**统一接口：**
-
-```python
-class HudRenderer:
-    def render(self, frame, hud: HudData):
-        """返回叠加 OSD 之后的图像帧"""
-```
-
-这个图像帧可以通过 HDMI → AV → 模拟图传 → FPV 眼镜，实现完整 HUD。
+当前 HUD 已在 `main.py` 实现：左侧相机画面，右侧侧边栏 OSD。OSD 包含状态机状态、dx/dy、置信度、对齐标记、tvec，以及飞控/RC 信息（电压、卫星数、模式、航向、速度、经纬度、armed 标记）。输出管道为 `appsrc ... fbdevsink device=/dev/fb0`，默认 `USE_FB=1`；`FBDEV` 可重定向设备，设 `USE_FB=0` 可关闭输出。
 
 ---
-
 ### 2.6 Telemetry / Logging 黑盒（可选但非常有用）
 
 **文件：**
@@ -314,28 +281,21 @@ class HudRenderer:
 * `sims/sim_mission.py`
   伪造 Telemetry & VisionResult，看状态机是否按预期切换、ControlCommand 是否合理。
 
-* `sims/sim_hud.py`
-  用一张静态图测试 OSD 布局，然后再接入真实相机。
-
----
-
 ## 3. 当前 Demo 版本（单文件 main.py）
 
-为了方便起步，项目提供了一个 **单文件 Demo**，只依赖：
+为了方便起步，项目提供了一份**单文件 Demo**，只依赖：
 
 ```bash
 pip install opencv-python numpy
 ```
 
-功能：
+功能（当前真机流）：
 
-* `FakeFcClient`：假飞控，生成高度、电压、yaw 等假数据；
-* `FakeVisionSystem`：假目标，每隔几秒在画面上出现红色圆圈，dx/dy 指向中心；
-* `AlignController`：根据 dx 调整 yaw_rate，简单 P 控制；
-* `MissionManager`：简化状态机
-  `IDLE → SEARCH → ALIGN → READY_TO_DROP → DROP → EXIT`
-* `HudRenderer`：在画面上叠加文字 OSD（模式、高度、电压、目标信息）。
-
+* `FakeFcClient`：假飞控，生成高度、电压、yaw、模式、速度、卫星数等假数据；
+* `VisionSystem`：按 `config.yaml` 打开 `/dev/video1`（640x480@30，V4L2）做 ArUco 检测，输出 dx/dy/conf/tvec；
+* HUD：左侧相机画面 + 右侧 OSD 侧边栏（状态机、dx/dy/conf、对齐标记、tvec、电压、卫星数、模式、航向、速度、经纬度、armed），通过 GStreamer 输出到 `/dev/fb0`；`USE_FB=0` 可关闭；
+* `AlignController`：根据 dx/dy 和 tvec 做简单对准；
+* `MissionManager`：简化状态机 `IDLE -> SEARCH -> ALIGN -> READY_TO_DROP -> DROP -> EXIT`
 ### 运行步骤
 
 1. 安装依赖：
@@ -358,14 +318,6 @@ pip install opencv-python numpy
    * 左上角显示状态：SEARCH / ALIGN / READY_TO_DROP / DROP / EXIT 等；
    * 按 `ESC` 退出。
 
-### 无桌面（Orange Pi HDMI 直出）
-
-- 在 `config.yaml` 里设置：
-  - `hud.display: false`（禁用窗口）
-  - `hud.use_fbdev: true`
-  - `hud.fbdev_path: "/dev/fb0"`（默认即可）
-- 直接运行 `python main.py`，画面会通过 GStreamer `fbdevsink` 写到 `/dev/fb0`，可用 HDMI/AV 输出观看。
-- 开启 `use_fbdev` 时窗口显示会被自动关闭，不支持同时窗口+fbdev 双输出。
 
 ---
 
@@ -381,7 +333,6 @@ pip install opencv-python numpy
    * 把 `FakeFcClient` 抽出去变成 `app/io/fc_client.py`；
    * 把 `FakeVisionSystem` 抽出去变成 `app/vision/system.py`；
    * 把 `MissionManager` / `AlignController` 抽出去放 `app/mission/`；
-   * 把 `HudRenderer` 抽出去放 `app/hud/renderer.py`。
 
 3. **接入真实 MAVLink：**
 
@@ -394,13 +345,11 @@ pip install opencv-python numpy
      * `send_yaw_rate()`
      * `send_gimbal_angles()`
      * `send_servo()`；
-   * 在室内不起桨，只看数据和 HUD 变化，确认安全。
 
 4. **接入真实视觉：**
 
    * 在 `VisionSystem` 里打开 `/dev/videoX`；
    * 先用简单的颜色检测 / 形状检测验证 dx/dy；
-   * 确认 HUD 中目标位置和实际画面一致。
    * 配置摄像头：`config.yaml` → `vision`
      * `device`: 节点或索引，例：`"/dev/video2"` 或 `0`
      * `width` / `height`: 例：`640` / `480`（与设备支持的分辨率匹配）
@@ -420,7 +369,6 @@ pip install opencv-python numpy
 
 6. **真机外场试飞：**
 
-   * 先只开 HUD，不启用自动 yaw / vx / drop，只做观测；
    * 再逐步打开低增益 P 控制，观察行为；
    * 最后打开全流程自动对准+投弹。
 
@@ -430,7 +378,6 @@ pip install opencv-python numpy
 
 * [ ] 把 Demo 中的类拆分到 `app/` 结构
 * [ ] 实现 `FcClient` 的真实 MAVLink 连接（pymavlink / mavsdk）
-* [ ] 在 OrangePi 上跑通主循环（仅读取 + HUD，不控制电机）
 * [ ] 实现真实的 `VisionSystem`（摄像头 + 识别算法）
 * [ ] 补充 `sims/` 各模块的独立模拟脚本
 * [ ] 设计完整的搜索模式（高空斜视转圈 / 扫描）
