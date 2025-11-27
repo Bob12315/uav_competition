@@ -119,11 +119,18 @@ uav_competition/
 
 **文件：**
 
+* `app/io/link_mav.py`  # pymavlink 基础封装（连接/模式/读写指令）
 * `app/io/fc_client.py`
 * `app/io/sensors.py`
 * `app/io/rc_input.py`
 * `app/io/gimbal_controller.py`
 * `app/io/dropper_controller.py`
+
+**快速 MAVLink 自测（基于 `app/io/link_mav.py` 模板）**
+
+* 监听模式（飞控主动推流到 OrangePi）：在 `config.yaml` 里设 `fc.endpoint: "udp:0.0.0.0:15001"`，运行 `python app/io/link_mav.py`，应能看到 Heartbeat/Mode/Voltage。
+* 主动发送模式（OrangePi 主动连飞控）：设 `fc.endpoint: "udpout:<FC_IP>:15001"`。
+* 如 Heartbeat 有而电压/GPS/模式为 None，请检查飞控对应串口/UDP 口的 SRx 频率是否启用 `SYS_STATUS` / `GLOBAL_POSITION_INT` / `GPS_RAW_INT`。
 
 **硬件实际连接：**
 
@@ -132,6 +139,8 @@ uav_competition/
 **职责：**
 
 * `FcClient`
+
+  * 基于 `app/io/link_mav.py` 的 pymavlink 封装（UDP/串口）
 
   * 连接飞控（串口 / UDP）
   * 发送控制指令：速度、偏航、舵机、云台
@@ -334,17 +343,12 @@ pip install opencv-python numpy
    * 把 `FakeVisionSystem` 抽出去变成 `app/vision/system.py`；
    * 把 `MissionManager` / `AlignController` 抽出去放 `app/mission/`；
 
-3. **接入真实 MAVLink：**
+3. **接入真实 MAVLink（基础能力已打通）：**
 
-   * 在 `FcClient` 里用 `pymavlink` 连接飞控；
-   * 实现：
-
-     * `read_telemetry_raw()`
-     * `read_rc_channels()`
-     * `send_velocity_body()`
-     * `send_yaw_rate()`
-     * `send_gimbal_angles()`
-     * `send_servo()`；
+   * `FcClient` 基于 `app/io/link_mav.py` 使用 `pymavlink` 连接飞控（UDP / 串口均可）；
+   * 已覆盖：`read_telemetry_raw()`、`read_rc_channels()`、`send_velocity_body()`、`send_yaw_rate()`、
+     `send_gimbal_angles()`、`send_servo()`；
+   * 建议结合飞控端口的 SRx 频率配置，确认心跳 / 姿态 / 电池 / RC 刷新正常。
 
 4. **接入真实视觉：**
 
@@ -377,7 +381,7 @@ pip install opencv-python numpy
 ## 5. TODO / Roadmap（可按你实际进度更新）
 
 * [ ] 把 Demo 中的类拆分到 `app/` 结构
-* [ ] 实现 `FcClient` 的真实 MAVLink 连接（pymavlink / mavsdk）
+* [x] 实现 `FcClient` 的真实 MAVLink 连接（pymavlink，见 `app/io/link_mav.py`）
 * [ ] 实现真实的 `VisionSystem`（摄像头 + 识别算法）
 * [ ] 补充 `sims/` 各模块的独立模拟脚本
 * [ ] 设计完整的搜索模式（高空斜视转圈 / 扫描）
@@ -447,6 +451,7 @@ sudo apt install -y xserver-xorg xinit openbox xterm
 python3 -m venv .venv
 source .venv/bin/activate
 pip install opencv-python numpy
+pip install --upgrade pip，pip install pymavlink
 ```
 
 4) 摄像头权限检查：确保当前用户在 `video` 组（`groups`）；若不在，执行 `sudo usermod -aG video $USER` 后重新登录。
@@ -463,3 +468,34 @@ python main.py
 ```
 
 如果网络环境变化需要恢复官方源，使用备份文件还原 `/etc/apt/sources.list`，再执行 `sudo apt update`。
+
+在 Mission Planner → Full Parameter List 里按下面设置（你现在的值我直接对着改）：
+
+NET_ENABLE   = 1          # 已经是 1 了，保持
+NET_DHCP     = 0          # 必须改成 0 ！用静态 IP
+
+NET_IPADDR0  = 192
+NET_IPADDR1  = 168
+NET_IPADDR2  = 10
+NET_IPADDR3  = 14         # 飞控 IP = 192.168.10.14
+
+NET_NETMASK  = 24         # 就是 255.255.255.0
+
+# 直连情况下网关可以全设 0，避免乱
+NET_GWADDR0  = 0
+NET_GWADDR1  = 0
+NET_GWADDR2  = 0
+NET_GWADDR3  = 0
+
+
+然后是网络端口 1（给香橙派发 MAVLink 的那路）：
+
+NET_P1_TYPE     = 1       # 1 = UDP client  （你已经是 1 了）
+
+NET_P1_IP0      = 192
+NET_P1_IP1      = 168
+NET_P1_IP2      = 10
+NET_P1_IP3      = 15      # 这里要改成香橙派的 IP，而不是 14！
+
+NET_P1_PORT     = 15001   # 你决定的端口
+NET_P1_PROTOCOL = 2       # MAVLink2

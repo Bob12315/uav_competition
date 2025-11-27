@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 from logging import Logger
+from pathlib import Path
 
-from .config import AppConfig
+from .config import AppConfig, PROJECT_ROOT
 
 
 def setup_logging(config: AppConfig) -> Logger:
@@ -24,6 +25,13 @@ def setup_logging(config: AppConfig) -> Logger:
     ch.setFormatter(fmt)
     ch.addFilter(_NoDxDyFilter())
     logger.addHandler(ch)
+
+    log_dir = PROJECT_ROOT / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    fh = logging.FileHandler(Path(log_dir) / "uav.log", encoding="utf-8")
+    fh.setLevel(logger.level)
+    fh.setFormatter(fmt)
+    logger.addHandler(fh)
 
     logger.debug("Logger initialized.")
     return logger

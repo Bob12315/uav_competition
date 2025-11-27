@@ -2,7 +2,7 @@ logging:
   level: DEBUG
 
 fc:
-  endpoint: "udp:192.168.10.14:15001"
+  endpoint: "udp:0.0.0.0:15001"
   baud: 115200
   use_fake: false
 

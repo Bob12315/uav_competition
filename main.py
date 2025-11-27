@@ -63,7 +63,7 @@ def main() -> None:
             cmd, state = mission.update(telem, vr)
 
             if use_fbdev and frame is not None:
-                hud = draw_hud(frame, vr, state, aligned)
+                hud = draw_hud(frame, vr, state, aligned, telem=telem)
                 if fb_writer is None and not fb_attempted:
                     fb_writer = init_fb_writer(
                         fbdev_path=fbdev_path,

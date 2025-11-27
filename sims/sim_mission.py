@@ -28,7 +28,14 @@ def main():
     dropper = DropperController(fc, cfg.dropper, logger)
     align = AlignController(cfg.align, logger)
 
-    mission = MissionManager(cfg, rc, gimbal, dropper, align, logger)
+    mission = MissionManager(
+        align=align,
+        logger=logger,
+        cfg=cfg,
+        rc=rc,
+        gimbal=gimbal,
+        dropper=dropper,
+    )
 
     t0 = time.time()
     while True:
