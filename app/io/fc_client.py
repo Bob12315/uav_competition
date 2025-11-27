@@ -10,8 +10,8 @@ from app.core.models import ControlCommand, TelemetrySnapshot
 
 @dataclass
 class FcClientConfig:
-    device: str = "/dev/ttyS1"
-    baud: int = 921600
+    endpoint: str = "udp:192.168.10.14:15001"
+    baud: int = 115200
 
 
 class FcClient:
@@ -27,16 +27,35 @@ class FcClient:
 
     def connect(self) -> None:
         # TODO: 替换为真实串口/UDP 连接
-        self.log.info("Connecting to FC at %s baud %d", self.cfg.device, self.cfg.baud)
+        self.log.info(
+            "Connecting to FC endpoint=%s (baud=%d for serial)",
+            self.cfg.endpoint,
+            self.cfg.baud,
+        )
         time.sleep(0.5)
         self._connected = True
-        self.log.info("FC connected (placeholder).")
+        self.log.info("FC connected (placeholder, no MAVLink backend yet).")
 
     def heartbeat_ok(self) -> bool:
         # TODO: 检查最近一次 HEARTBEAT 时间
         return self._connected
 
     # ===== 下面这些函数都要用 MAVLink 实现 =====
+    def read_telemetry(self) -> TelemetrySnapshot:
+        raw = self.read_telemetry_raw()
+        return TelemetrySnapshot(
+            time=raw["time"],
+            mode=raw["mode"],
+            armed=raw["armed"],
+            voltage=raw["voltage"],
+            alt=raw["alt"],
+            vx=raw["vx"],
+            vy=raw["vy"],
+            yaw=raw["yaw"],
+            lat=raw["lat"],
+            lon=raw["lon"],
+            sats=raw["sats"],
+        )
 
     def read_telemetry_raw(self) -> dict:
         """
@@ -85,6 +104,19 @@ class FcClient:
         self.log.debug("send_servo ch=%d pwm=%d", channel, pwm)
         # TODO: MAV_CMD_DO_SET_SERVO
 
+    def send_control(self, cmd: ControlCommand) -> None:
+        """Simple aggregator so main loop can call one function."""
+        self.send_velocity_body(cmd.vx, cmd.vy, cmd.vz)
+        if abs(cmd.yaw_rate) > 1e-6:
+            self.send_yaw_rate(cmd.yaw_rate)
+        if cmd.gimbal_pitch is not None or cmd.gimbal_yaw is not None:
+            self.send_gimbal_angles(
+                cmd.gimbal_pitch or 0.0,
+                cmd.gimbal_yaw or 0.0,
+            )
+        if cmd.drop:
+            self.log.info("Drop requested (wire actual MAVLink dropper here).")
+
 
 class FakeFcClient:
     """
@@ -116,11 +148,16 @@ class FakeFcClient:
         )
 
     def send_control(self, cmd: ControlCommand) -> None:
-        if abs(cmd.yaw_rate) > 1e-3 or cmd.drop:
+        if (
+            abs(cmd.vx) > 1e-3
+            or abs(cmd.vy) > 1e-3
+            or abs(cmd.yaw_rate) > 1e-3
+            or cmd.drop
+        ):
             self.log.debug(
-                "control: yaw_rate=%.3f vx=%.2f vy=%.2f drop=%s",
-                cmd.yaw_rate,
+                "control: vx=%.2f vy=%.2f yaw_rate=%.3f drop=%s",
                 cmd.vx,
                 cmd.vy,
+                cmd.yaw_rate,
                 cmd.drop,
             )

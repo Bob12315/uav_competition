@@ -1,6 +1,11 @@
 logging:
   level: DEBUG
 
+fc:
+  endpoint: "udp:192.168.10.14:15001"
+  baud: 115200
+  use_fake: false
+
 flight:
   loop_hz: 20
   scan_alt: 30.0

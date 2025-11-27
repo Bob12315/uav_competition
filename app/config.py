@@ -70,6 +70,13 @@ class DropperConfig:
 
 
 @dataclass
+class FcConfig:
+    endpoint: str = "udp:192.168.10.14:15001"  # MAVLink UDP endpoint
+    baud: int = 115200  # used when endpoint is a serial device
+    use_fake: bool = True  # fallback to FakeFcClient when True
+
+
+@dataclass
 class AppConfig:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     flight: FlightConfig = field(default_factory=FlightConfig)
@@ -78,6 +85,7 @@ class AppConfig:
     vision: VisionConfig = field(default_factory=VisionConfig)
     rc_switch: RcSwitchConfig = field(default_factory=RcSwitchConfig)
     dropper: DropperConfig = field(default_factory=DropperConfig)
+    fc: FcConfig = field(default_factory=FcConfig)
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -133,6 +141,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     vision_cfg = data.get("vision", {}) or {}
     rc_cfg = data.get("rc_switch", {}) or {}
     drop_cfg = data.get("dropper", {}) or {}
+    fc_cfg = data.get("fc", {}) or {}
 
     calibration_file = vision_cfg.get("calibration_file")
     camera_matrix = vision_cfg.get("camera_matrix")
@@ -164,5 +173,10 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         ),
         rc_switch=RcSwitchConfig(**rc_cfg),
         dropper=DropperConfig(**drop_cfg),
+        fc=FcConfig(
+            endpoint=str(fc_cfg.get("endpoint", "udp:192.168.10.14:15001")),
+            baud=int(fc_cfg.get("baud", 115200)),
+            use_fake=bool(fc_cfg.get("use_fake", True)),
+        ),
     )
     return cfg
